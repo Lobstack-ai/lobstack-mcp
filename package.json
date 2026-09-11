@@ -1,0 +1,45 @@
+{
+  "name": "@lobstack/mcp",
+  "version": "0.1.0",
+  "description": "The Lobstack Gateway as an MCP server: thirty models behind one key, and what each call cost.",
+  "type": "module",
+  "bin": { "lobstack-mcp": "./dist/index.js" },
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": { "types": "./dist/server.d.ts", "import": "./dist/server.js" }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build && node --test test/*.test.mjs",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "llm",
+    "gateway",
+    "openai",
+    "anthropic",
+    "claude",
+    "cursor",
+    "lobstack"
+  ],
+  "license": "MIT",
+  "author": "Lobstack",
+  "repository": { "type": "git", "url": "git+https://github.com/Lobstack-ai/lobstack-mcp.git" },
+  "bugs": { "url": "https://github.com/Lobstack-ai/lobstack-mcp/issues" },
+  "homepage": "https://github.com/Lobstack-ai/lobstack-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}
