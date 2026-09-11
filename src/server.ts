@@ -25,6 +25,7 @@
  * exists here.
  */
 
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { loadConfig, type Config } from "./config.js";
 import { chatInput, chatOutput, runChat } from "./tools/chat.js";
@@ -33,7 +34,26 @@ import { routePreviewInput, routePreviewOutput, runRoutePreview } from "./tools/
 import { spendInput, spendOutput, runSpend } from "./tools/spend.js";
 
 export const SERVER_NAME = "lobstack";
-export const SERVER_VERSION = "0.1.0";
+
+/**
+ * Read from package.json, not typed here.
+ *
+ * This is the version the server announces over MCP `initialize`, and it was a
+ * literal sitting beside a `version` field in the manifest — two places to bump
+ * and one to forget. `npm version` writes the manifest and nothing else, so a
+ * release would have shipped announcing the previous version to every client.
+ */
+export const SERVER_VERSION: string = ((): string => {
+  try {
+    return (
+      JSON.parse(
+        readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+      ) as { version?: string }
+    ).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const INSTRUCTIONS = `Lobstack is a metered LLM gateway: one key reaches every major model, and every call
 comes back with a receipt saying which model served it and what it cost.
