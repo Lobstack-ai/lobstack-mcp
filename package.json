@@ -41,7 +41,6 @@
     "lobstack"
   ],
   "license": "MIT",
-  "publishConfig": { "access": "public", "provenance": true },
   "author": "Lobstack",
   "repository": {
     "type": "git",
@@ -60,6 +59,7 @@
     "typescript": "^5.9.2"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   }
 }
