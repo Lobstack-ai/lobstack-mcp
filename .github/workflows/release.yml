@@ -1,0 +1,56 @@
+# Publishing @lobstack/mcp.
+#
+# The token lives in one place: the repository secret NPM_TOKEN. It is never on
+# a laptop, never in a shell history, never pasted into a chat. Publishing is
+# `npm version <x> && git push --follow-tags`; this file does the rest.
+#
+# `id-token: write` is what lets npm attach a provenance attestation, so anyone
+# running `npx -y @lobstack/mcp` can verify the tarball was built from this
+# commit in this repository rather than uploaded by hand. `publishConfig` in
+# package.json asks for it; without this permission the publish would fail.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      # The tag is the claim; package.json is the fact. If they disagree the
+      # wrong version gets published under the right tag and nobody notices
+      # until an install pulls something unexpected.
+      - name: Tag must match the version in package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Tag $GITHUB_REF_NAME says $tag, package.json says $pkg." >&2
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm test
+
+      # prepublishOnly builds and re-runs the tests, so the tarball is always
+      # made from this checkout rather than from whatever dist/ happened to
+      # exist. --provenance is redundant with publishConfig but harmless, and
+      # makes the intent readable from the log.
+      - run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
