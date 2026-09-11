@@ -1,4 +1,4 @@
-# @lobstack/mcp
+# @lobstack-ai/mcp
 
 An MCP server for the [Lobstack](https://www.lobstack.ai) Gateway. One API key
 reaches every major model, and every call comes back with a receipt: which model
@@ -14,7 +14,7 @@ credential at all and an agent can still ask "which model would this prompt go
 to, and what would it cost":
 
 ```
-npx -y @lobstack/mcp
+npx -y @lobstack-ai/mcp
 ```
 
 Add it to your client using one of the blocks below, leave `env` out, and ask:
@@ -35,7 +35,7 @@ The other three tools need a key, minted in Console → API keys.
   "mcpServers": {
     "lobstack": {
       "command": "npx",
-      "args": ["-y", "@lobstack/mcp"],
+      "args": ["-y", "@lobstack-ai/mcp"],
       "env": {
         "LOBSTACK_API_KEY": "lsk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
@@ -55,7 +55,7 @@ Restart Claude Desktop. The four `lobstack_*` tools appear under the tools menu.
   "mcpServers": {
     "lobstack": {
       "command": "npx",
-      "args": ["-y", "@lobstack/mcp"],
+      "args": ["-y", "@lobstack-ai/mcp"],
       "env": {
         "LOBSTACK_API_KEY": "lsk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
@@ -67,7 +67,7 @@ Restart Claude Desktop. The four `lobstack_*` tools appear under the tools menu.
 ### Claude Code
 
 ```bash
-claude mcp add lobstack --env LOBSTACK_API_KEY=lsk_live_... -- npx -y @lobstack/mcp
+claude mcp add lobstack --env LOBSTACK_API_KEY=lsk_live_... -- npx -y @lobstack-ai/mcp
 ```
 
 ### Zed
@@ -80,7 +80,7 @@ In `settings.json`, under `context_servers`:
     "lobstack": {
       "source": "custom",
       "command": "npx",
-      "args": ["-y", "@lobstack/mcp"],
+      "args": ["-y", "@lobstack-ai/mcp"],
       "env": {
         "LOBSTACK_API_KEY": "lsk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }

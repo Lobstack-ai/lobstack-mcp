@@ -1,11 +1,11 @@
-# Publishing @lobstack/mcp.
+# Publishing @lobstack-ai/mcp.
 #
 # The token lives in one place: the repository secret NPM_TOKEN. It is never on
 # a laptop, never in a shell history, never pasted into a chat. Publishing is
 # `npm version <x> && git push --follow-tags`; this file does the rest.
 #
 # `id-token: write` is what lets npm attach a provenance attestation, so anyone
-# running `npx -y @lobstack/mcp` can verify the tarball was built from this
+# running `npx -y @lobstack-ai/mcp` can verify the tarball was built from this
 # commit in this repository rather than uploaded by hand. `publishConfig` in
 # package.json asks for it; without this permission the publish would fail.
 name: release

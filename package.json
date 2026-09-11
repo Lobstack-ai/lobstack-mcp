@@ -1,5 +1,5 @@
 {
-  "name": "@lobstack/mcp",
+  "name": "@lobstack-ai/mcp",
   "version": "0.1.0",
   "description": "The Lobstack Gateway as an MCP server: thirty models behind one key, and what each call cost.",
   "type": "module",
