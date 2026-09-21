@@ -1,8 +1,9 @@
 # @lobstack-ai/mcp
 
 An MCP server for the [Lobstack](https://www.lobstack.ai) Gateway. One API key
-reaches every major model, and every call comes back with a receipt: which model
-served it, how many tokens, what it cost.
+reaches [26 models across 9 providers](https://www.lobstack.ai/models), and
+every call comes back with a receipt: which model served it, how many tokens,
+what it cost.
 
 Works in Claude Desktop, Claude Code, Cursor, Zed, or anything else that speaks
 the Model Context Protocol over stdio.
@@ -118,8 +119,17 @@ against.
 The catalogue: model key, label, tier, provider, context window, and USD per
 million input and output tokens. Optional `tier` and `provider` filters.
 
-A model the registry cannot price comes back with `null` prices and renders as
-`—`. It is not free.
+**The first entry is `auto` — Nex 1, the router.** It carries `tier: "router"`
+and a null price on purpose: its cost is whichever model it picks, which is not
+knowable until the request is scored. That is the one null in this list that is
+not a gap.
+
+Every other null price is. A model the registry cannot price comes back with
+`null` and renders as `—`, and it is not free — a zero there would be a claim
+that a real charge did not happen.
+
+The full catalogue with rates is also public, no key required, at
+<https://www.lobstack.ai/models>.
 
 ### `lobstack_chat`
 
@@ -129,7 +139,7 @@ Sends a prompt or a conversation and returns the reply plus the receipt.
 | --- | --- | --- |
 | `prompt` | string | A single user message. Use this **or** `messages`. |
 | `messages` | array | `{ role, content }`, OpenAI-shaped. Use this **or** `prompt`. |
-| `model` | string | Defaults to `auto` — the router picks the cheapest capable model. |
+| `model` | string | Defaults to `auto` — **Nex 1**, the router, picks the cheapest capable model. |
 | `system` | string | Prepended to the conversation. |
 | `max_tokens` | integer | Cap on the reply. |
 | `temperature` | number | Some models do not accept it; the receipt says when it was dropped. |
