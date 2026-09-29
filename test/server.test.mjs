@@ -171,7 +171,8 @@ test('an unpriced call stays unpriced and never becomes $0.00', async () => {
     const rendered = textOf(res);
     assert.match(rendered, /unpriced/);
     assert.doesNotMatch(rendered, /\$0\.00/);
-    assert.match(rendered, /could not price/);
+    assert.match(rendered, /the Lobstack API could not price/);
+    assert.doesNotMatch(rendered, /gateway/i);
   });
 });
 
@@ -232,7 +233,24 @@ test('surfaces a mid-stream error instead of returning a truncated answer', asyn
     const res = await client.callTool({ name: 'lobstack_chat', arguments: { prompt: 'hi' } });
     assert.equal(res.isError, true);
     assert.match(textOf(res), /upstream provider timed out/);
+    assert.match(textOf(res), /the Lobstack API failed part-way through the answer/);
   });
+});
+
+test('names the Lobstack API, not "the gateway", when it cannot be reached', async () => {
+  // A port that was listening a moment ago and is not now.
+  const gw = await startFakeGateway();
+  const url = gw.url;
+  await gw.close();
+  const { client, close } = await connect({ baseUrl: url });
+  try {
+    const res = await client.callTool({ name: 'lobstack_models', arguments: {} });
+    assert.equal(res.isError, true);
+    assert.match(textOf(res), /could not reach the Lobstack API/);
+    assert.doesNotMatch(textOf(res), /gateway/i);
+  } finally {
+    await close();
+  }
 });
 
 test('refuses prompt and messages together rather than guessing', async () => {
@@ -275,7 +293,7 @@ test('fails loudly on a 3xx instead of losing the key to it', async () => {
       const args = name === 'lobstack_chat' ? { prompt: 'hi' } : name === 'lobstack_route_preview' ? { prompt: 'hi' } : {};
       const res = await client.callTool({ name, arguments: args });
       assert.equal(res.isError, true, `${name} must not follow a redirect`);
-      assert.match(textOf(res), /redirected \(307\)/, name);
+      assert.match(textOf(res), /the Lobstack API redirected \(307\)/, name);
       assert.match(textOf(res), /strips the Authorization header/, name);
     }
   } finally {
@@ -378,18 +396,87 @@ test('a preview on auto claims no baseline at all', async () => {
 
 /* ── spend ────────────────────────────────────────────────────────────── */
 
-test('reports spend, and says the total is a floor when rows are unpriced', async () => {
+test('reports the ledger figure the Console shows, not the trace\'s legacy copy', async () => {
   await withGateway({}, async (client) => {
     const res = await client.callTool({ name: 'lobstack_spend', arguments: { range: '30d', group_by: 'model' } });
-    assert.equal(res.structuredContent.enabled, true);
-    assert.equal(res.structuredContent.is_floor, true);
-    assert.equal(res.structuredContent.summary.unpriced_requests, 2);
+    const sc = res.structuredContent;
+    assert.equal(sc.enabled, true);
+    assert.equal(sc.cost_source, 'ledger');
+    assert.equal(sc.cost_usd, 0.0041, 'spend.cost_usd, the Console figure');
+    assert.equal(sc.spend.cost_usd, 0.0041);
 
     const rendered = textOf(res);
     assert.match(rendered, /12 requests/);
+    assert.match(rendered, /\$0\.004100/);
+    assert.doesNotMatch(rendered, /\$0\.003300/, 'summary.cost_usd is the legacy figure and is not printed');
+    // Per group, too: the ledger's spend, as the Console's breakdown shows it.
+    assert.match(rendered, /claude-haiku-4-5\s+9\s+\$0\.004100/);
+    assert.doesNotMatch(rendered, /legacy/, 'no fallback note when the ledger was read');
+  });
+});
+
+test('the floor is measured on the ledger\'s own rows', async () => {
+  await withGateway({}, async (client) => {
+    const res = await client.callTool({ name: 'lobstack_spend', arguments: {} });
+    assert.equal(res.structuredContent.is_floor, true);
+    const rendered = textOf(res);
+    assert.match(rendered, /1 row could not be priced/);
     assert.match(rendered, /a floor, not a total/);
-    assert.match(rendered, /2 unpriced/);
+    assert.match(rendered, /\(1 unpriced\)/);
     assert.match(rendered, /p95 1900ms/);
+  });
+});
+
+test('shows the two savings figures separately and never sums them', async () => {
+  await withGateway({}, async (client) => {
+    const res = await client.callTool({ name: 'lobstack_spend', arguments: {} });
+    const { savings } = res.structuredContent;
+    assert.equal(savings.named.difference_usd, 0.02);
+    assert.equal(savings.plan_ceiling.difference_usd, 0.4);
+    assert.equal(savings.total_usd, undefined, 'there is no summed field');
+
+    const rendered = textOf(res);
+    assert.match(rendered, /Saved on models you named: \$0\.0200 on 3 requests/);
+    assert.match(rendered, /best model your plan allows: \$0\.4000 on 5 auto requests/);
+    assert.match(rendered, /A comparison, not a saving/);
+    assert.match(rendered, /never added together/);
+    assert.doesNotMatch(rendered, /\$0\.4200/, 'the sum of the two appears nowhere');
+  });
+});
+
+test('falls back to the legacy figure only when the ledger could not be read, and says so', async () => {
+  await withGateway({ ledgerUnreadable: true }, async (client) => {
+    const res = await client.callTool({ name: 'lobstack_spend', arguments: {} });
+    const sc = res.structuredContent;
+    assert.equal(sc.cost_source, 'trace');
+    assert.equal(sc.cost_usd, 0.0033);
+    assert.equal(sc.spend, null);
+    assert.equal(sc.savings, null);
+    assert.equal(sc.is_floor, true, 'the trace\'s own unpriced count qualifies the trace\'s total');
+
+    const rendered = textOf(res);
+    assert.match(rendered, /\$0\.003300/);
+    assert.match(rendered, /billing ledger could not be read/);
+    assert.match(rendered, /legacy summary\.cost_usd/);
+    assert.match(rendered, /2 requests could not be priced/);
+    assert.doesNotMatch(rendered, /Routing savings/);
+  });
+});
+
+test('falls back on an older deployment that sends no ledger figure, and says so', async () => {
+  await withGateway({ legacyUsage: true }, async (client) => {
+    const res = await client.callTool({ name: 'lobstack_spend', arguments: {} });
+    assert.equal(res.structuredContent.cost_source, 'trace');
+    assert.equal(res.structuredContent.cost_usd, 0.0033);
+    assert.match(textOf(res), /does not report the billing ledger's spend/);
+  });
+});
+
+test('asks for the calendar month when told to, the Console\'s default window', async () => {
+  await withGateway({}, async (client, gw) => {
+    await client.callTool({ name: 'lobstack_spend', arguments: { range: 'month' } });
+    const call = gw.requests.find((r) => r.url.startsWith('/api/v1/usage'));
+    assert.match(call.url, /range=month/);
   });
 });
 

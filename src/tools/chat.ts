@@ -75,7 +75,7 @@ export const chatOutput = {
       cost_usd: z
         .number()
         .nullable()
-        .describe("USD the caller owes. NULL — never 0 — when the gateway could not price the call."),
+        .describe("USD the caller owes. NULL — never 0 — when the API could not price the call."),
       cost_display: z.string().describe('Human form. "unpriced" when cost_usd is null.'),
       priced: z.boolean(),
       savings: z
@@ -92,7 +92,7 @@ export const chatOutput = {
     })
     .nullable()
     .describe("Null when the endpoint sent no receipt at all."),
-  quota: z.record(z.unknown()).nullable().describe("Allowance remaining, as the gateway reported it."),
+  quota: z.record(z.unknown()).nullable().describe("Allowance remaining, as the API reported it."),
   dropped_params: z.array(z.string()),
 };
 

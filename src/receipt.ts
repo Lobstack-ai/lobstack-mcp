@@ -146,7 +146,7 @@ export function describeReceipt({ receipt, usage, model, droppedParams }: Receip
     );
   }
   if (receipt && !receipt.priced) {
-    lines.push("  the gateway could not price this model, so no cost is claimed");
+    lines.push("  the Lobstack API could not price this model, so no cost is claimed");
   }
   if (!receipt) {
     lines.push("  no receipt on this response — the endpoint did not send one");

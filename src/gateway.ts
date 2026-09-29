@@ -59,7 +59,7 @@ export async function gwFetch(cfg: Config, url: string, opts: FetchOpts = {}): P
     });
   } catch (e) {
     throw new GatewayError(
-      `could not reach the gateway: ${scrub(e instanceof Error ? e.message : String(e), cfg.apiKey)}`,
+      `could not reach the Lobstack API: ${scrub(e instanceof Error ? e.message : String(e), cfg.apiKey)}`,
       { hint: `Base URL in use: ${cfg.base.origin}` },
     );
   }
@@ -68,7 +68,7 @@ export async function gwFetch(cfg: Config, url: string, opts: FetchOpts = {}): P
     // Not followed, and not quietly.
     const location = res.headers.get("location");
     throw new GatewayError(
-      `the gateway redirected (${res.status}) to ${location || "somewhere else"}; the request was not followed.`,
+      `the Lobstack API redirected (${res.status}) to ${location || "somewhere else"}; the request was not followed.`,
       {
         status: res.status,
         hint:

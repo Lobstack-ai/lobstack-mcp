@@ -96,7 +96,7 @@ test('the receipt line says what it cannot say', () => {
   });
   assert.match(line, /unpriced/);
   assert.doesNotMatch(line, /\$0\.00/);
-  assert.match(line, /could not price/);
+  assert.match(line, /the Lobstack API could not price/);
 
   const none = describeReceipt({ receipt: null, usage: null, model: 'x' });
   assert.match(none, /no receipt/);

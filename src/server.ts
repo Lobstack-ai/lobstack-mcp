@@ -16,7 +16,8 @@
  *                           what the product does before anybody has signed up.
  *   lobstack_models         the catalogue, with per-token prices and tiers.
  *   lobstack_chat           the actual completion, and the receipt for it.
- *   lobstack_spend          the ledger over a range.
+ *   lobstack_spend          the billing ledger over a range, as the Console
+ *                           shows it, with routing savings split in two.
  *
  * Nothing here mints, rotates or reads API keys, and nothing accepts a base URL
  * as an argument. This process holds a live credential for as long as the MCP
@@ -137,8 +138,11 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       title: "Read spend and usage",
       description:
         "What this organization has spent through the Lobstack API over a range, broken down by day, model, key or agent, " +
-        "with request counts, tokens, error counts and latency percentiles. Requires an API key with the usage:read " +
-        "scope. Reports how many requests could not be priced, because a total that includes them is a floor.",
+        "with request counts, tokens, error counts and latency percentiles. The total is the billing ledger's figure, " +
+        "the same one the Console's Spend shows; if the ledger cannot be read it falls back to the request trace's " +
+        "legacy figure and says so. Also shows routing savings as two separate figures, never summed: saved on models " +
+        "you named, and a comparison against the best model your plan allows. Reports how many rows could not be " +
+        "priced, because a total that includes them is a floor. Requires an API key with the usage:read scope.",
       inputSchema: spendInput,
       outputSchema: spendOutput,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },

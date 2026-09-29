@@ -173,18 +173,32 @@ structured result carries:
 
 ### `lobstack_spend`
 
-What the organization has spent over `7d`, `14d`, `30d` or `90d`, grouped by
-`day`, `model`, `key` or `agent`, with request counts, tokens, errors and
-latency percentiles. Requires a key holding the `usage:read` scope.
+What the organization has spent over `month` (the UTC calendar month to date,
+the Console's default window), `7d`, `14d`, `30d` or `90d`, grouped by `day`,
+`model`, `key` or `agent`, with request counts, tokens, errors and latency
+percentiles. Requires a key holding the `usage:read` scope. The default range
+is `7d`.
 
-It also reports `unpriced_requests` and sets `is_floor`. The endpoint sums an
-unpriced row as zero — the only arithmetic available — so a total that includes
-one is a lower bound, not a total, and this tool says which.
+**The total is the Console's figure.** `/api/v1/usage` returns two totals from
+two tables: `spend.cost_usd`, from the billing ledger that the allowance and
+invoices are read from and that the Console's Spend shows, and
+`summary.cost_usd`, the request trace's own copy of each price, kept for older
+callers. They are written separately and can disagree. This tool reports
+`spend.cost_usd` (and each group's `ledger_cost_usd`) as `cost_usd`, with
+`cost_source: "ledger"`. Only when the ledger figure is null or missing does it
+fall back to `summary.cost_usd`, set `cost_source: "trace"`, and say so in the
+output.
 
-It does **not** report a savings total. Savings are reported per call, by
-`lobstack_chat`, where the API sends them with the reason attached. Adding them
-up client-side would mean pricing the org's tokens against a copy of the rate
-card, and a copy drifts.
+It also sets `is_floor`. Unpriced rows sum as zero — the only arithmetic
+available — so a total that includes one is a lower bound, not a total, and
+this tool says how many there were, counted in the same table as the total.
+
+**Routing savings are two figures, never one.** When the API sends `savings`,
+the tool shows `named` (saved on models you asked for, measured) and
+`plan_ceiling` (what `auto` requests would have cost on the best model your
+plan allows: a comparison, not a saving) on separate lines. It never adds them
+together, and it never computes a saving client-side from a copy of the rate
+card.
 
 ## Two rules about the numbers
 

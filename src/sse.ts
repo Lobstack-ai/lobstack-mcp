@@ -106,7 +106,7 @@ export async function consume(body: ReadableStream<Uint8Array>, onText?: (delta:
       const e = frame.error as { message?: string };
       // A 200 whose stream carries an error. Headers are long gone by then, so
       // this is the only place the gateway can report a mid-stream failure.
-      throw new StreamError(e?.message || "the gateway reported an error mid-stream");
+      throw new StreamError(e?.message || "the Lobstack API reported an error mid-stream");
     }
     if (typeof frame.model === "string") model = frame.model;
     if (frame.usage && typeof frame.usage === "object") usage = frame.usage as StreamUsage;

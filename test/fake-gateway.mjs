@@ -17,7 +17,8 @@
  *                                           if an Authorization header arrives,
  *                                           so a client that leaks a credential
  *                                           to a public endpoint fails a test.
- *   GET  /api/v1/usage                      a summary including unpriced rows.
+ *   GET  /api/v1/usage                      a trace summary, a ledger spend block
+ *                                           that disagrees with it, and savings.
  *
  * Every request is recorded in `.requests` so tests can assert on what was sent
  * as well as what came back.
@@ -86,6 +87,10 @@ const json = (res, status, body, headers = {}) => {
  * @param {boolean} [o.midStreamError]   a 200 whose stream carries an error
  * @param {boolean} [o.usageDisabled]    /api/v1/usage answers enabled:false
  * @param {boolean} [o.usageForbidden]   /api/v1/usage answers 403
+ * @param {boolean} [o.ledgerUnreadable]  /api/v1/usage answers spend: null,
+ *                                       savings: null (ledger read failed)
+ * @param {boolean} [o.legacyUsage]       /api/v1/usage has no spend, savings
+ *                                       or ledger fields, like an older deployment
  * @param {boolean} [o.droppedTemp]      x-lobstack-dropped-params: temperature
  * @param {number}  [o.slow]             ms between the two halves of the stream
  */
@@ -99,6 +104,8 @@ export function startFakeGateway({
   midStreamError = false,
   usageDisabled = false,
   usageForbidden = false,
+  ledgerUnreadable = false,
+  legacyUsage = false,
   droppedTemp = false,
   slow = 5,
 } = {}) {
@@ -189,7 +196,13 @@ export function startFakeGateway({
           truncated: false,
         });
       }
-      return json(res, 200, {
+      /*
+       * The trace and the ledger disagree on purpose, as they can in
+       * production: the trace's copy (summary.cost_usd, $0.0033) is not the
+       * ledger's figure (spend.cost_usd, $0.0041), which is what the Console
+       * shows. A tool that prints the trace's number fails the test.
+       */
+      const body = {
         enabled: true,
         org_id: 'org_test',
         authenticated_via: 'api_key',
@@ -206,12 +219,69 @@ export function startFakeGateway({
           p95_latency_ms: 1900,
           streamed: 9,
         },
+        spend: ledgerUnreadable
+          ? null
+          : {
+              source: 'ledger',
+              cost_usd: 0.0041,
+              managed_cost_usd: 0.0041,
+              byok_cost_usd: 0,
+              rows: 11,
+              unpriced_rows: 1,
+              total_tokens: 54000,
+              truncated: false,
+            },
+        ledger: ledgerUnreadable
+          ? null
+          : {
+              traced_billable_requests: 11,
+              metered_rows: 11,
+              unmetered_requests: 0,
+              unmetered_cost_usd: 0,
+              unmetered_unpriced_requests: 0,
+            },
+        savings: ledgerUnreadable
+          ? null
+          : {
+              named: {
+                requests: 3,
+                served_cost_usd: 0.0012,
+                baseline_cost_usd: 0.0212,
+                difference_usd: 0.02,
+                baseline_models: ['claude-opus-5'],
+              },
+              plan_ceiling: {
+                requests: 5,
+                served_cost_usd: 0.0019,
+                baseline_cost_usd: 0.4019,
+                difference_usd: 0.4,
+                baseline_models: ['claude-opus-5'],
+              },
+              unpriced_routed_requests: 0,
+            },
         groups: [
-          { key: 'claude-haiku-4-5', requests: 9, total_tokens: 40000, cost_usd: 0.0033, unpriced_requests: 0 },
-          { key: 'llama-4-scout-local', requests: 3, total_tokens: 14000, cost_usd: 0, unpriced_requests: 2 },
+          {
+            key: 'claude-haiku-4-5', requests: 9, total_tokens: 40000, cost_usd: 0.0033, unpriced_requests: 0,
+            ...(ledgerUnreadable ? {} : { ledger_cost_usd: 0.0041, ledger_rows: 9, ledger_unpriced_rows: 0 }),
+          },
+          {
+            key: 'llama-4-scout-local', requests: 3, total_tokens: 14000, cost_usd: 0, unpriced_requests: 2,
+            ...(ledgerUnreadable ? {} : { ledger_cost_usd: 0, ledger_rows: 2, ledger_unpriced_rows: 1 }),
+          },
         ],
         truncated: false,
-      });
+      };
+      if (legacyUsage) {
+        delete body.spend;
+        delete body.ledger;
+        delete body.savings;
+        for (const g of body.groups) {
+          delete g.ledger_cost_usd;
+          delete g.ledger_rows;
+          delete g.ledger_unpriced_rows;
+        }
+      }
+      return json(res, 200, body);
     }
 
     if (!url.startsWith('/api/gateway/v1/chat/completions')) {

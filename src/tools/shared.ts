@@ -59,12 +59,12 @@ export function fromThrown(cfg: Config, e: unknown): ToolResult {
           : "The key was rejected. It may have been revoked or have expired; mint a new one in Console → API keys.",
       );
     }
-    if (e.requestId) hints.push(`Gateway request id: ${e.requestId}`);
+    if (e.requestId) hints.push(`Request id: ${e.requestId}`);
     return failure(cfg, e.message, hints.join("\n"));
   }
   if (e instanceof ConfigError) return failure(cfg, e.message, e.hint);
   if (e instanceof StreamError) {
-    return failure(cfg, `the gateway failed part-way through the answer: ${e.message}`);
+    return failure(cfg, `the Lobstack API failed part-way through the answer: ${e.message}`);
   }
   return failure(cfg, e instanceof Error ? e.message : String(e));
 }
