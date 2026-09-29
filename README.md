@@ -1,7 +1,7 @@
 # @lobstack-ai/mcp
 
-An MCP server for the [Lobstack](https://www.lobstack.ai) Gateway. One API key
-reaches [26 models across 9 providers](https://www.lobstack.ai/models), and
+An MCP server for the [Lobstack API](https://www.lobstack.ai/api-platform). One
+API key reaches [26 models across 9 providers](https://www.lobstack.ai/models), and
 every call comes back with a receipt: which model served it, how many tokens,
 what it cost.
 
@@ -181,14 +181,14 @@ It also reports `unpriced_requests` and sets `is_floor`. The endpoint sums an
 unpriced row as zero — the only arithmetic available — so a total that includes
 one is a lower bound, not a total, and this tool says which.
 
-It does **not** report a savings total. `/api/v1/usage` does not compute one,
-and adding up savings client-side would mean pricing the org's tokens against a
-copy of the rate card. Savings are reported per call, by `lobstack_chat`, where
-the gateway sends them with the reason attached.
+It does **not** report a savings total. Savings are reported per call, by
+`lobstack_chat`, where the API sends them with the reason attached. Adding them
+up client-side would mean pricing the org's tokens against a copy of the rate
+card, and a copy drifts.
 
 ## Two rules about the numbers
 
-**A null cost is not zero.** `cost_usd: null` means the gateway could not price
+**A null cost is not zero.** `cost_usd: null` means the API could not price
 the call. It renders as `unpriced`, never as `$0.00`. Rendering it as `$0.00`
 writes off a real charge, and that exact substitution ran for three months in
 production.
@@ -208,11 +208,11 @@ production.
 | variable | default | notes |
 | --- | --- | --- |
 | `LOBSTACK_API_KEY` | none | Read once at startup. Never logged, never in a tool result. |
-| `LOBSTACK_BASE_URL` | `https://www.lobstack.ai/api/gateway/v1` | For staging and self-hosted deployments. |
+| `LOBSTACK_BASE_URL` | `https://www.lobstack.ai/api/gateway/v1` | The Lobstack API base URL. Change it only to point at a staging deployment. |
 
 **Use `www`, not the bare apex.** `lobstack.ai` redirects to `www.lobstack.ai`,
 and [RFC 9110 §15.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.4)
-requires a client to drop `Authorization` across a host change — so the gateway
+requires a client to drop `Authorization` across a host change — so the API
 answers a perfectly good key with "missing credentials". This server rewrites
 the apex and tells you it did, and refuses to follow any other 3xx rather than
 send a request whose credential has been stripped.
