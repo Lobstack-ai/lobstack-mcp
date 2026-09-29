@@ -17,15 +17,18 @@
  * `truncated` — the endpoint pages to a cap. When it binds, the sums are a
  * floor for a second, independent reason.
  *
- * WHAT THIS TOOL DOES NOT REPORT
+ * WHAT THIS TOOL DOES NOT REPORT (YET)
  *
- * A savings total. `/api/v1/usage` does not compute one — its summary carries
- * requests, tokens, cost, error rate and latency percentiles, and nothing else.
- * Adding up per-call savings client-side would require the baselines, which are
- * not in this response, and printing a number derived from a rate card we hold
- * a copy of is the failure mode this whole product argues against. Savings are
- * reported per call, by lobstack_chat, where the Gateway sends them with the
- * reason attached.
+ * A savings total. `/api/v1/usage` now computes one, server-side from the
+ * priced ledger, as a top-level `savings` object split in two and never
+ * summed: `named` (a measured saving against a model the caller asked for) and
+ * `plan_ceiling` (a counterfactual against the priciest model the plan allows,
+ * when the caller sent `auto`). `savings` is null when the ledger could not be
+ * read. This tool does not read it yet; if it ever does, the two blocks must
+ * stay separate and `plan_ceiling` must be labelled as a counterfactual. What
+ * it must never do is add up per-call savings client-side from a rate card we
+ * hold a copy of. Per-call savings are reported by lobstack_chat, where the
+ * API sends them with the reason attached.
  */
 
 import { z } from "zod";

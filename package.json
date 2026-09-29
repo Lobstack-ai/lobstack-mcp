@@ -1,7 +1,7 @@
 {
   "name": "@lobstack-ai/mcp",
-  "version": "0.1.0",
-  "description": "The Lobstack Gateway as an MCP server: thirty models behind one key, and what each call cost.",
+  "version": "0.1.1",
+  "description": "The Lobstack API as an MCP server: one key across many model providers, and what each call cost.",
   "type": "module",
   "bin": {
     "lobstack-mcp": "./dist/index.js"
@@ -38,7 +38,8 @@
     "anthropic",
     "claude",
     "cursor",
-    "lobstack"
+    "lobstack",
+    "lobstack-api"
   ],
   "license": "MIT",
   "author": "Lobstack",
@@ -49,7 +50,7 @@
   "bugs": {
     "url": "https://github.com/Lobstack-ai/lobstack-mcp/issues"
   },
-  "homepage": "https://github.com/Lobstack-ai/lobstack-mcp#readme",
+  "homepage": "https://www.lobstack.ai/docs/mcp",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^3.25.76"
