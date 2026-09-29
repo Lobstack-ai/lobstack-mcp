@@ -1,5 +1,5 @@
 /**
- * The MCP server: four tools over the Lobstack Gateway.
+ * The MCP server: four tools over the Lobstack API.
  *
  * Exported as a factory rather than wired straight to stdio so the tests can
  * drive it over an in-memory transport with a real MCP client on the other end,
@@ -55,7 +55,7 @@ export const SERVER_VERSION: string = ((): string => {
   }
 })();
 
-const INSTRUCTIONS = `Lobstack is a metered LLM gateway: one key reaches every major model, and every call
+const INSTRUCTIONS = `The Lobstack API is a metered LLM gateway: one key reaches every major model, and every call
 comes back with a receipt saying which model served it and what it cost.
 
 - lobstack_route_preview needs NO API key. It scores a prompt against the same
@@ -63,7 +63,7 @@ comes back with a receipt saying which model served it and what it cost.
   estimated cost. Use it to choose a model, or to show what routing does.
 - lobstack_chat runs the completion. Send model "auto" to let the router pick
   the cheapest model that can handle the prompt.
-- Costs are reported as the gateway priced them. A null cost means the gateway
+- Costs are reported as the API priced them. A null cost means the API
   could not price the call — it does not mean the call was free.
 - A saving labelled "saved" is like-for-like: the caller named a model and got
   something cheaper. A saving labelled "vs ceiling" is measured against the most
@@ -92,7 +92,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       description:
         "Score a prompt and report which model the Lobstack router would serve it with, and what that would cost. " +
         "Runs no inference, spends nothing, and NEEDS NO API KEY — use it to pick a model before calling lobstack_chat, " +
-        "or to show what the gateway does on a machine with no key configured. Token counts are estimates; the billed " +
+        "or to show what the Lobstack API does on a machine with no key configured. Token counts are estimates; the billed " +
         "figure comes from the provider's usage block on the real call.",
       inputSchema: routePreviewInput,
       outputSchema: routePreviewOutput,
@@ -104,9 +104,9 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   server.registerTool(
     "lobstack_models",
     {
-      title: "List gateway models",
+      title: "List Lobstack API models",
       description:
-        "The models the Lobstack Gateway serves, with capability tier, provider, context window and USD price per " +
+        "The models the Lobstack API serves, with capability tier, provider, context window and USD price per " +
         "million input and output tokens. A model the registry cannot price shows a null price, not zero.",
       inputSchema: modelsInput,
       outputSchema: modelsOutput,
@@ -118,9 +118,9 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   server.registerTool(
     "lobstack_chat",
     {
-      title: "Chat through the gateway",
+      title: "Chat through the Lobstack API",
       description:
-        "Send a prompt or conversation through the Lobstack Gateway and get the reply plus a receipt: the model that " +
+        "Send a prompt or conversation through the Lobstack API and get the reply plus a receipt: the model that " +
         'actually served it, token counts, USD cost, and any saving with the reason it may be claimed. Model "auto" ' +
         "(the default) lets the router pick the cheapest model that can handle the prompt. This call spends money " +
         "against the configured key's allowance.",
@@ -136,7 +136,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     {
       title: "Read spend and usage",
       description:
-        "What this organization has spent through the gateway over a range, broken down by day, model, key or agent, " +
+        "What this organization has spent through the Lobstack API over a range, broken down by day, model, key or agent, " +
         "with request counts, tokens, error counts and latency percentiles. Requires an API key with the usage:read " +
         "scope. Reports how many requests could not be priced, because a total that includes them is a floor.",
       inputSchema: spendInput,
