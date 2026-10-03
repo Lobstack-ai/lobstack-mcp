@@ -1,7 +1,7 @@
 # @lobstack-ai/mcp
 
 An MCP server for the [Lobstack API](https://www.lobstack.ai/api-platform). One
-API key reaches [26 models across 9 providers](https://www.lobstack.ai/models), and
+API key reaches [models from five providers](https://www.lobstack.ai/models), and
 every call comes back with a receipt: which model served it, how many tokens,
 what it cost.
 
