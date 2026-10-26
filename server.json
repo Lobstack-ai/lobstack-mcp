@@ -1,0 +1,49 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Lobstack-ai/lobstack-mcp",
+  "title": "Lobstack API",
+  "description": "The Lobstack API as an MCP server: one key across many model providers, and what each call cost.",
+  "websiteUrl": "https://www.lobstack.ai/docs/mcp",
+  "repository": {
+    "url": "https://github.com/Lobstack-ai/lobstack-mcp",
+    "source": "github",
+    "id": "1365220361"
+  },
+  "version": "0.1.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@lobstack-ai/mcp",
+      "version": "0.1.3",
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y",
+          "description": "Skip the install prompt. The server is invoked as npx -y @lobstack-ai/mcp."
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LOBSTACK_API_KEY",
+          "description": "Lobstack API key from Console → API keys. Optional: lobstack_route_preview works with no key. The other tools need it. Read once at startup, never logged, never a tool argument.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "LOBSTACK_BASE_URL",
+          "description": "Lobstack API base URL. Defaults to https://www.lobstack.ai/api/gateway/v1. Change it only for a staging deployment. Use www; the bare apex redirects and strips Authorization.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string",
+          "default": "https://www.lobstack.ai/api/gateway/v1"
+        }
+      ]
+    }
+  ]
+}

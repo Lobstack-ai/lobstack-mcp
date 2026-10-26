@@ -257,6 +257,52 @@ no price, and refuses any request to `/route-preview` that arrives carrying an
 `Authorization` header — so a client that leaks a credential to a public
 endpoint fails a test rather than shipping.
 
+## Publishing to the MCP Registry
+
+`server.json` is what the [Official MCP Registry](https://registry.modelcontextprotocol.io)
+stores. PulseMCP lists a server once that registry accepts it, so this is the
+publish that puts `@lobstack-ai/mcp` there. The registry stores metadata only.
+`.github/workflows/release.yml` publishes the npm tarball when a `v*` tag is
+pushed, and the registry then reads `mcpName` out of that tarball.
+
+The registry name is `io.github.Lobstack-ai/lobstack-mcp` in both places GitHub
+authentication checks: `name` in `server.json`, and `mcpName` in `package.json`.
+A GitHub login can only publish under `io.github.Lobstack-ai/`. `version` in
+`server.json`, the npm package entry inside it, and `package.json` are the same
+string. The package is `@lobstack-ai/mcp` on `https://registry.npmjs.org`,
+stdio, invoked as `npx -y @lobstack-ai/mcp`. `LOBSTACK_API_KEY` is optional
+(`isRequired: false`, `isSecret: true`) because `lobstack_route_preview` runs
+with no key.
+
+### One click
+
+`.github/workflows/publish-mcp.yml` runs when a GitHub Release is published, and
+from the Actions tab with **Run workflow**. It refuses to publish when the
+versions disagree, waits until that version is on npm, then runs:
+
+```bash
+curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+./mcp-publisher login github-oidc
+./mcp-publisher publish
+```
+
+`login github-oidc` is why the workflow has `id-token: write`. There is no
+registry token to store.
+
+On a laptop the publisher commands are the same, with the device-code login in
+place of OIDC:
+
+```bash
+./mcp-publisher login github
+./mcp-publisher publish
+```
+
+The registry reads `mcpName` from the tarball already on npm, not from this
+checkout. `0.1.3` was published before `mcpName` existed, and npm will not
+accept a second upload of that version, so the first publish that succeeds is
+the next one: bump `package.json` and `server.json` together, push the `v*` tag,
+then publish the GitHub Release.
+
 ## Licence
 
 MIT
