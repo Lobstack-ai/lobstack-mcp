@@ -1,12 +1,12 @@
 # @lobstack-ai/mcp
 
 An MCP server for the [Lobstack API](https://www.lobstack.ai/api-platform). One
-API key reaches [models from five providers](https://www.lobstack.ai/models), and
-every call comes back with a receipt: which model served it, how many tokens,
-what it cost.
+API key reaches [models from four US model companies](https://www.lobstack.ai/models)
+(Anthropic, OpenAI, Google and xAI), and every call comes back with a receipt:
+which model served it, how many tokens, what it cost.
 
-Works in Claude Desktop, Claude Code, Cursor, Zed, or anything else that speaks
-the Model Context Protocol over stdio.
+Works in any agent or client that speaks the Model Context Protocol over stdio.
+Setup for a few common ones is below; anything else takes the same command.
 
 ## Try it without a key
 
@@ -151,7 +151,7 @@ structured result carries:
 ```json
 {
   "text": "...",
-  "model": { "requested": "claude-opus-5", "served": "claude-haiku-4-5", "routed": true },
+  "model": { "requested": "claude-opus-5-5", "served": "claude-haiku-5-5", "routed": true },
   "usage": { "prompt_tokens": 400, "completion_tokens": 140, "total_tokens": 540 },
   "receipt": {
     "request_id": "req_...",
@@ -162,7 +162,7 @@ structured result carries:
       "amount_usd": 0.0044,
       "label": "saved",
       "named": true,
-      "baseline_model": "claude-opus-5",
+      "baseline_model": "claude-opus-5-5",
       "baseline_reason": "named"
     }
   },
