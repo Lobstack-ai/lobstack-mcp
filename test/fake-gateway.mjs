@@ -5,7 +5,7 @@
  * same reason: what breaks in a gateway client is at the seams, and a fixture
  * that hands you whole frames over a mocked fetch tests none of them.
  *
- * It speaks the four shapes that matter and nothing else:
+ * It speaks the shapes that matter and nothing else:
  *
  *   POST /api/gateway/v1/chat/completions   SSE whose LAST frame carries
  *                                           `x_lobstack`. The stream is written
@@ -17,6 +17,9 @@
  *                                           if an Authorization header arrives,
  *                                           so a client that leaks a credential
  *                                           to a public endpoint fails a test.
+ *   POST /api/gateway/v1/embeddings         OpenAI-shaped vectors; receipt in headers.
+ *   POST /api/gateway/v1/search             { query, results }; receipt in headers,
+ *                                           including x-lobstack-cache.
  *   GET  /api/v1/usage                      a trace summary, a ledger spend block
  *                                           that disagrees with it, and savings.
  *
@@ -55,11 +58,16 @@ const FRAMES = [
 ];
 
 const MODELS = [
+  // The router, as GET /models lists it: first, tier "router", no price.
+  { id: 'auto', label: 'Nex 1', object: 'model', owned_by: 'lobstack', tier: 'router', context_window: 200000, price_per_mtok: null, managed: true, routes_to: 3 },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', object: 'model', owned_by: 'anthropic', tier: 'small', context_window: 200000, price_per_mtok: { input: 1, output: 5 }, managed: true },
   { id: 'claude-opus-5', label: 'Claude Opus 5', object: 'model', owned_by: 'anthropic', tier: 'flagship', context_window: 1000000, price_per_mtok: { input: 5, output: 25 }, managed: true },
   { id: 'gpt-5.6', label: 'GPT-5.6 Sol', object: 'model', owned_by: 'openai', tier: 'flagship', context_window: 1050000, price_per_mtok: { input: 4, output: 20 }, managed: true },
   // No price at all. The listing has to render this without inventing a zero.
-  { id: 'llama-4-scout-local', label: 'Llama 4 Scout', object: 'model', owned_by: 'groq', tier: 'small', context_window: 131072, price_per_mtok: {}, managed: false },
+  { id: 'gpt-6-luna-unpriced', label: 'Unpriced test row', object: 'model', owned_by: 'openai', tier: 'nano', context_window: 1050000, price_per_mtok: {}, managed: false },
+  // Embedding models come after every chat row and carry `type`.
+  { id: 'text-embedding-3-small', object: 'model', owned_by: 'openai', type: 'embedding', label: 'Text Embedding 3 Small', dimensions: 1536, price_per_mtok: { input: 0.02, output: 0 }, managed: true },
+  { id: 'text-embedding-3-large', object: 'model', owned_by: 'openai', type: 'embedding', label: 'Text Embedding 3 Large', dimensions: 3072, price_per_mtok: { input: 0.13, output: 0 }, managed: true },
 ];
 
 const QUOTA_HEADERS = {
@@ -92,6 +100,10 @@ const json = (res, status, body, headers = {}) => {
  * @param {boolean} [o.legacyUsage]       /api/v1/usage has no spend, savings
  *                                       or ledger fields, like an older deployment
  * @param {boolean} [o.droppedTemp]      x-lobstack-dropped-params: temperature
+ * @param {{status:number, body:object, headers?:object}} [o.fail]
+ *                                       answer every authenticated request with this
+ * @param {boolean} [o.searchCached]     /search answers as a 10-minute cache hit, cost 0
+ * @param {boolean} [o.embedUnpriced]    /embeddings sends an empty x-lobstack-cost-usd
  * @param {number}  [o.slow]             ms between the two halves of the stream
  */
 export function startFakeGateway({
@@ -107,6 +119,9 @@ export function startFakeGateway({
   ledgerUnreadable = false,
   legacyUsage = false,
   droppedTemp = false,
+  fail = null,
+  searchCached = false,
+  embedUnpriced = false,
   slow = 5,
 } = {}) {
   /** @type {Array<{method:string,url:string,headers:object,body:any}>} */
@@ -178,6 +193,60 @@ export function startFakeGateway({
       return json(res, 401, { error: { message: 'missing credentials' } });
     }
 
+    if (fail) {
+      return json(res, fail.status, fail.body, { 'x-lobstack-request-id': 'req_err', ...(fail.headers ?? {}) });
+    }
+
+    if (url.startsWith('/api/gateway/v1/embeddings')) {
+      const inputs = Array.isArray(body?.input) ? body.input : [body?.input];
+      const model = body?.model && body.model !== 'auto' ? body.model : 'text-embedding-3-small';
+      const dims = body?.dimensions ?? (model === 'text-embedding-3-large' ? 3072 : 1536);
+      return json(
+        res,
+        200,
+        {
+          object: 'list',
+          // Out of order on purpose: the tool must sort by index.
+          data: inputs
+            .map((_, i) => ({ object: 'embedding', index: i, embedding: Array.from({ length: dims }, (_, j) => (i + 1) * 0.001 + j * 1e-6) }))
+            .reverse(),
+          model,
+          usage: { prompt_tokens: 7 * inputs.length, total_tokens: 7 * inputs.length },
+        },
+        {
+          'x-lobstack-request-id': 'req_emb',
+          'x-lobstack-model': model,
+          'x-lobstack-routed': 'false',
+          'x-lobstack-cost-usd': embedUnpriced ? '' : '0.00000014',
+          'x-lobstack-priced': embedUnpriced ? 'false' : 'true',
+          'x-lobstack-metered': 'true',
+          ...QUOTA_HEADERS,
+        },
+      );
+    }
+
+    if (url.startsWith('/api/gateway/v1/search')) {
+      const all = [
+        { title: 'Rollbacks and failed health checks', url: 'https://example.com/rollbacks', snippet: 'A deploy rolls back when the new version fails its health check.' },
+        { title: 'Deploy logs', url: 'https://example.com/logs', snippet: '' },
+        { title: 'Third', url: 'https://example.com/3', snippet: 'three' },
+      ];
+      return json(
+        res,
+        200,
+        { query: String(body?.query ?? '').trim(), results: all.slice(0, body?.count ?? 5) },
+        {
+          'x-lobstack-request-id': 'req_search',
+          'x-lobstack-model': 'web-search',
+          'x-lobstack-mode': 'managed',
+          'x-lobstack-cost-usd': searchCached ? '0.00000000' : '0.00500000',
+          'x-lobstack-priced': 'true',
+          'x-lobstack-cache': searchCached ? 'hit' : 'miss',
+          ...QUOTA_HEADERS,
+        },
+      );
+    }
+
     if (url.startsWith('/api/gateway/v1/models')) {
       return json(res, 200, { object: 'list', data: MODELS });
     }
@@ -206,8 +275,10 @@ export function startFakeGateway({
         enabled: true,
         org_id: 'org_test',
         authenticated_via: 'api_key',
-        range: '7d',
-        group_by: 'model',
+        range: new URL(url, 'http://x').searchParams.get('range') || '7d',
+        group_by: new URL(url, 'http://x').searchParams.get('group_by') || 'day',
+        history: { days: 30, plan: 'developer', limited: new URL(url, 'http://x').searchParams.get('range') === '90d', upgrade: null },
+        credit: { weekly: null, welcome: { remaining_usd: 4.5, expires_at: '2026-11-28T00:00:00Z' }, included: null, purchased: { remaining_usd: 0 }, top_ups: true },
         summary: {
           requests: 12,
           errors: 1,
@@ -265,7 +336,7 @@ export function startFakeGateway({
             ...(ledgerUnreadable ? {} : { ledger_cost_usd: 0.0041, ledger_rows: 9, ledger_unpriced_rows: 0 }),
           },
           {
-            key: 'llama-4-scout-local', requests: 3, total_tokens: 14000, cost_usd: 0, unpriced_requests: 2,
+            key: 'gpt-6-luna-unpriced', requests: 3, total_tokens: 14000, cost_usd: 0, unpriced_requests: 2,
             ...(ledgerUnreadable ? {} : { ledger_cost_usd: 0, ledger_rows: 2, ledger_unpriced_rows: 1 }),
           },
         ],

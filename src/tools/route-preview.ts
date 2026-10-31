@@ -33,43 +33,79 @@ import { errorFrom, gwFetch } from "../gateway.js";
 import { asMoney, money } from "../receipt.js";
 import { baseNote, fromThrown, ok, type ToolResult } from "./shared.js";
 
+/** Plan ids the endpoint accepts (PLANS in the platform's src/lib/pricing.ts, plus the legacy tiers). */
+export const PLAN_TIERS = [
+  "free",
+  "byok",
+  "developer",
+  "studio",
+  "scale",
+  "appsumo_1",
+  "appsumo_2",
+  "appsumo_3",
+  "starter",
+  "pro",
+  "performance",
+  "enterprise",
+] as const;
+
 export const routePreviewInput = {
-  prompt: z.string().min(1).max(8000).describe("The prompt to score. Scored, never sent to a model."),
+  prompt: z
+    .string()
+    .min(1)
+    .max(8000)
+    .describe(
+      "The exact prompt you are about to send to lobstack_chat, 1–8000 characters. Scored by the router's complexity " +
+        "heuristic; never sent to a model and never stored.",
+    ),
   requested_model: z
     .string()
     .optional()
-    .describe('A model key to compare against, e.g. "claude-opus-5". Defaults to "auto".'),
+    .describe(
+      'A chat model id from lobstack_models to compare against, e.g. "claude-opus-5-5". Default "auto" (let the router ' +
+        "choose; no baseline is reported). When you name a model and the router would serve a cheaper one, `baseline` " +
+        "shows that model's estimated cost and the difference. An unknown id is a 400.",
+    ),
   plan_tier: z
-    .string()
+    .enum(PLAN_TIERS)
     .optional()
-    .describe("Plan id, which sets the ceiling the router may reach. Defaults to the pro ceiling."),
+    .describe(
+      'Plan id whose ceiling bounds which tiers the router may reach, e.g. "free", "developer", "studio", "scale". ' +
+        'Default "pro". Use the plan the real key is on, or the preview can name a model the key cannot get.',
+    ),
   expected_output_tokens: z
     .number()
     .int()
     .positive()
     .max(200_000)
     .optional()
-    .describe("How long the reply is expected to be. Defaults to half the prompt, which is the common chat ratio."),
+    .describe(
+      "Expected reply length in tokens, integer 1–200000, used only for the cost estimate. Default: half the prompt's " +
+        "estimated tokens, minimum 64. Pass the max_tokens you will send to lobstack_chat for a worst-case figure.",
+    ),
   conversation_length: z
     .number()
     .int()
     .nonnegative()
     .optional()
-    .describe("Messages already in the conversation; it feeds the complexity score."),
+    .describe("How many messages are already in the conversation, integer ≥ 0. Default 0. Longer conversations score as more complex."),
 };
 
 export const routePreviewOutput = {
-  requested_model: z.string(),
-  served_model: z.string().describe("The model this prompt would actually be routed to."),
+  requested_model: z.string().describe('What the preview compared against; "auto" when nothing was named.'),
+  served_model: z.string().describe("The model this prompt would be served by. Pass it as `model` to lobstack_chat to pin it."),
   served_label: z.string().nullable(),
   provider: z.string().nullable(),
   tier: z.string().nullable(),
-  complexity: z.number().nullable(),
+  complexity: z.number().nullable().describe("The router's complexity score for the prompt; higher reaches higher tiers."),
   routed: z.boolean().nullable().describe("True when the router would serve something other than what was requested."),
-  reason: z.string().nullable(),
+  reason: z.string().nullable().describe("The router's one-line reason for the tier it chose."),
   estimated_cost_usd: z.number().nullable().describe("Null when the registry cannot price the model."),
   estimated_cost_display: z.string(),
-  token_estimate: z.record(z.unknown()).nullable(),
+  token_estimate: z
+    .record(z.unknown())
+    .nullable()
+    .describe("input and output token estimates (~4 characters per token) and how they were made. Estimates, not counts."),
   baseline: z
     .object({
       model: z.string(),
@@ -79,7 +115,10 @@ export const routePreviewOutput = {
     })
     .nullable()
     .describe('Only present when a model was named and the router moved away from it — the "named" case.'),
-  managed_key_configured: z.boolean().nullable(),
+  managed_key_configured: z
+    .boolean()
+    .nullable()
+    .describe("False when this deployment has no Lobstack key for the served model's provider, so a real call may route elsewhere."),
   estimated: z.literal(true).describe("Always true. These are estimates, not a bill."),
 };
 

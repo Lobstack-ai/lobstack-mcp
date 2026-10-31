@@ -13,7 +13,7 @@
  */
 
 import { ConfigError, scrub, type Config } from "../config.js";
-import { GatewayError } from "../gateway.js";
+import { CODE_HINTS, GatewayError, retryAdvice } from "../gateway.js";
 import { StreamError } from "../sse.js";
 
 export interface ToolResult {
@@ -51,6 +51,11 @@ export function requireKey(cfg: Config): ToolResult | null {
 export function fromThrown(cfg: Config, e: unknown): ToolResult {
   if (e instanceof GatewayError) {
     const hints: string[] = [];
+    if (e.status !== undefined && e.errorClass) {
+      hints.push(`Error class: ${e.errorClass} (HTTP ${e.status}${e.code ? `, ${e.code}` : ""}). ${retryAdvice(e.errorClass, e.status, e.retryAfter, e.code)}`);
+    }
+    const codeHint = e.code ? CODE_HINTS[e.code] : undefined;
+    if (codeHint) hints.push(codeHint);
     if (e.hint) hints.push(e.hint);
     if (e.status === 401) {
       hints.push(

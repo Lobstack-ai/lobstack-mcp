@@ -1,8 +1,8 @@
 {
   "name": "@lobstack-ai/mcp",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "mcpName": "io.github.Lobstack-ai/lobstack-mcp",
-  "description": "The Lobstack API as an MCP server: one key across many model providers, and what each call cost.",
+  "description": "The Lobstack API over MCP: chat, embeddings and web search on one key, and what each call cost.",
   "type": "module",
   "bin": {
     "lobstack-mcp": "./dist/index.js"
@@ -38,8 +38,12 @@
     "gateway",
     "openai",
     "anthropic",
+    "google",
+    "xai",
     "claude",
     "cursor",
+    "embeddings",
+    "web-search",
     "lobstack",
     "lobstack-api"
   ],

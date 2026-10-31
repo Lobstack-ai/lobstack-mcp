@@ -26,10 +26,11 @@ import { gwFetch, errorFrom, quotaFromHeaders, describeQuota } from "../gateway.
 import { consume } from "../sse.js";
 import { describeReceipt, money, parseReceipt, savingsLabel } from "../receipt.js";
 import { baseNote, droppedParams, failure, fromThrown, ok, requireKey, type ToolResult } from "./shared.js";
+import { clientTagArg, tagHeaders } from "./client-tag.js";
 
 const Message = z.object({
-  role: z.enum(["system", "user", "assistant"]),
-  content: z.string(),
+  role: z.enum(["system", "user", "assistant"]).describe('Who said it: "system", "user" or "assistant".'),
+  content: z.string().describe("The message text."),
 });
 
 export const chatInput = {
@@ -37,33 +38,58 @@ export const chatInput = {
     .string()
     .min(1)
     .optional()
-    .describe("A single user message. Use this or `messages`, not both."),
+    .describe(
+      'A single user message, e.g. "Summarise this changelog in three bullets: …". Give exactly one of `prompt` or ' +
+        "`messages`. Billed on input tokens, so long prompts cost more.",
+    ),
   messages: z
     .array(Message)
     .min(1)
     .optional()
-    .describe("A full conversation, OpenAI-shaped. Use this or `prompt`, not both."),
+    .describe(
+      'A whole conversation, oldest first, OpenAI-shaped: [{"role":"user","content":"…"},{"role":"assistant","content":"…"}, …]. ' +
+        "Give exactly one of `prompt` or `messages`. Every message is billed as input on every call.",
+    ),
   model: z
     .string()
     .optional()
     .describe(
-      'Lobstack model key, e.g. "claude-sonnet-5". Defaults to "auto", which lets Token Intelligence pick the cheapest model that can handle the prompt. lobstack_models lists the keys.',
+      'Chat model id from lobstack_models, e.g. "claude-sonnet-5-5", "gpt-6-sol", "gemini-3.1-pro" or "grok-4.7". ' +
+        'Default "auto": Nex 1, the router, scores the prompt and serves the cheapest model that can handle it, and the ' +
+        "receipt names which. Naming a model may still be routed to a cheaper one; the receipt then reports a like-for-like " +
+        "saving. Embedding model ids are refused here; use lobstack_embeddings.",
     ),
-  system: z.string().optional().describe("System prompt, prepended to the conversation."),
-  max_tokens: z.number().int().positive().max(200_000).optional().describe("Cap on the reply length."),
+  system: z
+    .string()
+    .optional()
+    .describe("Optional system prompt, sent as the first message ahead of `prompt` or `messages`. Billed as input."),
+  max_tokens: z
+    .number()
+    .int()
+    .positive()
+    .max(200_000)
+    .optional()
+    .describe(
+      "Upper bound on reply length in output tokens, integer 1–200000. Default: 4096 (8192 for OpenAI GPT-5 and o-series models). Output " +
+        "tokens are the expensive ones, so setting this caps the worst-case cost of the call.",
+    ),
   temperature: z
     .number()
     .min(0)
     .max(2)
     .optional()
-    .describe("Sampling temperature. Some served models do not accept it; the receipt says when it was dropped."),
+    .describe(
+      "Sampling temperature, 0–2 (0 = most deterministic). Default: not sent, so the provider's own default applies. Some models do not " +
+        "accept it; then it is dropped and `dropped_params` lists it.",
+    ),
+  client_tag: clientTagArg,
 };
 
 export const chatOutput = {
   text: z.string().describe("The assistant's reply."),
   model: z.object({
-    requested: z.string().nullable(),
-    served: z.string().nullable().describe("The model that actually answered."),
+    requested: z.string().nullable().describe('What was asked for; "auto" when the router chose.'),
+    served: z.string().nullable().describe("The model that actually answered. Quote this, not `requested`."),
     routed: z.boolean().nullable().describe("True when the served model differs from the one requested."),
   }),
   usage: z
@@ -92,8 +118,14 @@ export const chatOutput = {
     })
     .nullable()
     .describe("Null when the endpoint sent no receipt at all."),
-  quota: z.record(z.unknown()).nullable().describe("Allowance remaining, as the API reported it."),
-  dropped_params: z.array(z.string()),
+  quota: z
+    .record(z.unknown())
+    .nullable()
+    .describe(
+      'Allowance after this call, from the x-lobstack-quota-* headers. meter "spend": allowance_usd, spent_usd, ' +
+        'remaining_usd. meter "requests"/"legacy": limit, used, remaining. Null when the API sent none.',
+    ),
+  dropped_params: z.array(z.string()).describe("Parameters the served model does not accept and the API dropped, e.g. [\"temperature\"]."),
 };
 
 type ChatArgs = {
@@ -103,6 +135,7 @@ type ChatArgs = {
   system?: string;
   max_tokens?: number;
   temperature?: number;
+  client_tag?: string;
 };
 
 export async function runChat(cfg: Config, args: ChatArgs): Promise<ToolResult> {
@@ -125,6 +158,7 @@ export async function runChat(cfg: Config, args: ChatArgs): Promise<ToolResult> 
   try {
     const res = await gwFetch(cfg, gatewayUrl(cfg.base.origin, "/chat/completions"), {
       method: "POST",
+      headers: tagHeaders(args.client_tag),
       body: JSON.stringify({
         model: requestedModel,
         messages,
@@ -140,9 +174,7 @@ export async function runChat(cfg: Config, args: ChatArgs): Promise<ToolResult> 
       throw await errorFrom(
         cfg,
         res,
-        res.status === 402
-          ? "The allowance on this key is exhausted. Top up or wait for the reset in Console → Billing."
-          : res.status === 403
+        res.status === 403
             ? 'This key needs the "inference" scope. Mint one in Console → API keys.'
             : undefined,
       );

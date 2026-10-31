@@ -1,9 +1,9 @@
 # @lobstack-ai/mcp
 
 An MCP server for the [Lobstack API](https://www.lobstack.ai/api-platform). One
-API key reaches [models from five providers](https://www.lobstack.ai/models), and
-every call comes back with a receipt: which model served it, how many tokens,
-what it cost.
+API key reaches [chat models from Anthropic, OpenAI, Google and xAI](https://www.lobstack.ai/models),
+plus embeddings and web search, and every call comes back with a receipt: which
+model served it, how many tokens, what it cost.
 
 Works in Claude Desktop, Claude Code, Cursor, Zed, or anything else that speaks
 the Model Context Protocol over stdio.
@@ -22,7 +22,8 @@ Add it to your client using one of the blocks below, leave `env` out, and ask:
 
 > Preview how Lobstack would route: "summarise this changelog into three bullets"
 
-The other three tools need a key, minted in Console → API keys.
+`lobstack_models` also works without a key on www.lobstack.ai. The other four
+tools need one, minted in Console → API keys.
 
 ## Install
 
@@ -45,7 +46,7 @@ The other three tools need a key, minted in Console → API keys.
 }
 ```
 
-Restart Claude Desktop. The four `lobstack_*` tools appear under the tools menu.
+Restart Claude Desktop. The six `lobstack_*` tools appear under the tools menu.
 
 ### Cursor
 
@@ -92,57 +93,88 @@ In `settings.json`, under `context_servers`:
 
 ## Tools
 
+| Tool | Costs money | Needs a key | Endpoint |
+| --- | --- | --- | --- |
+| `lobstack_route_preview` | No | No | `POST /api/gateway/v1/route-preview` |
+| `lobstack_models` | No | No | `GET /api/gateway/v1/models` |
+| `lobstack_chat` | Yes, per token | `inference` scope | `POST /api/gateway/v1/chat/completions` |
+| `lobstack_embeddings` | Yes, per input token | `inference` scope | `POST /api/gateway/v1/embeddings` |
+| `lobstack_web_search` | Yes, per search | `inference` scope | `POST /api/gateway/v1/search` |
+| `lobstack_spend` | No | `usage:read` scope | `GET /api/v1/usage` |
+
+The intended order for an agent: `lobstack_route_preview` with the prompt it is
+about to send (free), then `lobstack_chat`. `lobstack_models` when it needs a
+model id or a rate. `lobstack_spend` to check what has already been spent.
+
+Every tool description states its cost, what it needs, when to use a sibling
+instead, and how to read its output, and every parameter has a description with
+its range, default and an example. The annotations are accurate: the three
+spending tools are `readOnlyHint: false, idempotentHint: false` (a repeat is
+billed again), the other three are read-only and idempotent, and none is
+destructive.
+
+There is no tool for creating, rotating or revoking API keys. That stays in the
+Console. There is also no "who am I" tool, because no key-authenticated
+endpoint reports it; the allowance comes back as `quota` on every spending call
+and as `credit` on `lobstack_spend`.
+
+There is no streaming switch either. The server streams from the API (that is
+how the chat receipt arrives), but an MCP tool result is one message, so the
+agent gets the whole answer at once.
+
 ### `lobstack_route_preview`
 
 Scores a prompt against the same router the paid path uses and reports the model
 that would serve it, the capability tier, the complexity score, and the
 estimated cost. Runs no inference and spends nothing. **Needs no API key.**
+Rate-limited to ten a minute per IP address.
 
 | argument | type | notes |
 | --- | --- | --- |
-| `prompt` | string, required | Scored, never sent to a model. Max 8000 characters. |
-| `requested_model` | string | A model to compare against. Defaults to `auto`. |
-| `plan_tier` | string | Plan id, which sets the ceiling the router may reach. |
-| `expected_output_tokens` | integer | Defaults to half the prompt. |
-| `conversation_length` | integer | Messages already in the conversation. |
+| `prompt` | string, required | The prompt you are about to send. 1 to 8000 characters. Scored, never sent to a model. |
+| `requested_model` | string | A chat model id to compare against. Default `auto`. An unknown id is a 400. |
+| `plan_tier` | enum | `free`, `byok`, `developer`, `studio`, `scale`, `appsumo_1`..`3`, or the legacy `starter`, `pro`, `performance`, `enterprise`. Default `pro`. Sets the ceiling the router may reach. |
+| `expected_output_tokens` | integer 1 to 200000 | Default half the prompt's estimated tokens, at least 64. |
+| `conversation_length` | integer ≥ 0 | Messages already in the conversation. Default 0. |
 
-Token counts are estimates — roughly four characters per token. The billed
-figure always comes from the provider's own usage block on the real request, and
-the tool says so in every answer.
-
-A `baseline` is returned only when you named a model and the router moved away
-from it. On `auto` it is `null`: there is no model you asked for to compare
-against.
+Token counts are estimates, roughly four characters per token. The billed
+figure always comes from the provider's own usage block on the real request,
+and the tool says so in every answer. A `baseline` is returned only when you
+named a model and the router moved away from it; on `auto` it is `null`.
 
 ### `lobstack_models`
 
-The catalogue: model key, label, tier, provider, context window, and USD per
-million input and output tokens. Optional `tier` and `provider` filters.
+The catalogue: model id, type (`chat` or `embedding`), label, tier, provider,
+context window, embedding dimensions, and USD per million input and output
+tokens.
 
-**The first entry is `auto` — Nex 1, the router.** It carries `tier: "router"`
-and a null price on purpose: its cost is whichever model it picks, which is not
-knowable until the request is scored. That is the one null in this list that is
-not a gap.
+| argument | type | notes |
+| --- | --- | --- |
+| `type` | `chat` \| `embedding` | Default both: chat rows first, embedding rows last. |
+| `tier` | `router` \| `nano` \| `small` \| `standard` \| `premium` \| `flagship` | Chat models only. |
+| `provider` | `anthropic` \| `openai` \| `google` \| `xai` \| `lobstack` | `lobstack` is the `auto` row. |
 
-Every other null price is. A model the registry cannot price comes back with
-`null` and renders as `—`, and it is not free — a zero there would be a claim
-that a real charge did not happen.
-
-The full catalogue with rates is also public, no key required, at
-<https://www.lobstack.ai/models>.
+**The first entry is `auto`, which is Nex 1, the router.** It carries
+`tier: "router"` and a null price on purpose: its cost is whichever model it
+picks. It is not counted in `unpriced_count`. Every other null price is a gap:
+the registry cannot price that model, and it renders as `—`, not as free.
+Embedding rows have an output price of 0 because embeddings have no output
+tokens. The full catalogue is also public at <https://www.lobstack.ai/models>.
 
 ### `lobstack_chat`
 
 Sends a prompt or a conversation and returns the reply plus the receipt.
+**Costs money** on input and output tokens.
 
 | argument | type | notes |
 | --- | --- | --- |
 | `prompt` | string | A single user message. Use this **or** `messages`. |
-| `messages` | array | `{ role, content }`, OpenAI-shaped. Use this **or** `prompt`. |
-| `model` | string | Defaults to `auto` — **Nex 1**, the router, picks the cheapest capable model. |
-| `system` | string | Prepended to the conversation. |
-| `max_tokens` | integer | Cap on the reply. |
-| `temperature` | number | Some models do not accept it; the receipt says when it was dropped. |
+| `messages` | array | `{ role, content }`, oldest first, role `system`/`user`/`assistant`. Use this **or** `prompt`. |
+| `model` | string | Default `auto`, which is **Nex 1**, the router. Any chat id from `lobstack_models`. |
+| `system` | string | Sent first, ahead of the conversation. |
+| `max_tokens` | integer 1 to 200000 | Default 4096 (8192 for OpenAI GPT-5 and o-series models). Caps the worst-case cost. |
+| `temperature` | number 0 to 2 | Not sent unless set. Some models do not accept it; `dropped_params` says when it was dropped. |
+| `client_tag` | string | Who the call is for, for cost attribution. See [Client tags](#client-tags). |
 
 The reply and the receipt come back as two separate content blocks, so whatever
 consumes the answer does not get a price line concatenated onto it. The
@@ -171,13 +203,57 @@ structured result carries:
 }
 ```
 
+### `lobstack_embeddings`
+
+Vectors for text, from OpenAI `text-embedding-3-small` (default, 1536
+dimensions) or `text-embedding-3-large` (3072). **Costs money** on input
+tokens. Not routed: `auto` means the small model, because vectors from
+different models cannot be compared.
+
+| argument | type | notes |
+| --- | --- | --- |
+| `input` | string, or array of 1 to 64 strings | Required. Each string is embedded separately and returned in the same order. |
+| `model` | `auto` \| `text-embedding-3-small` \| `text-embedding-3-large` | Default the small model. |
+| `dimensions` | integer | Shorten each vector. At most the model's own length; refused before any call if larger. |
+| `client_tag` | string | See [Client tags](#client-tags). |
+
+The API takes up to 2,048 inputs per call. This tool takes 64, because every
+vector comes back into the agent's context. For bulk indexing, call the HTTP API
+directly. The receipt is read from the `x-lobstack-*` headers: an empty
+`x-lobstack-cost-usd` is reported as `cost_usd: null`, never 0.
+
+### `lobstack_web_search`
+
+Web results from Brave Search's index through the Lobstack API: title, URL and
+a plain-text snippet each. **Costs money, per search**, not per token or per
+result: Brave's published price inside your plan's included usage and on the
+Free plan's credit, and that times the Lobstack rate past it. The current figure
+is on <https://www.lobstack.ai/docs/gateway/search>.
+
+| argument | type | notes |
+| --- | --- | --- |
+| `query` | string, required | 1 to 400 characters after trimming. Lobstack logs its length, not its text. |
+| `count` | integer 1 to 10 | Default 5. Fewer may come back. |
+| `client_tag` | string | See [Client tags](#client-tags). |
+
+The same query and count from the same organization within ten minutes may be
+answered from a short cache: `receipt.cache` is `"hit"` and the cost is 0. A
+402 or 503 means search will not run on Lobstack right now; the error text
+tells the agent to use another search rather than retry in a loop.
+
 ### `lobstack_spend`
 
-What the organization has spent over `month` (the UTC calendar month to date,
-the Console's default window), `7d`, `14d`, `30d` or `90d`, grouped by `day`,
-`model`, `key` or `agent`, with request counts, tokens, errors and latency
-percentiles. Requires a key holding the `usage:read` scope. The default range
-is `7d`.
+What the organization has spent. Read-only and free. Requires a key holding the
+`usage:read` scope.
+
+| argument | type | notes |
+| --- | --- | --- |
+| `range` | `month` \| `1d` \| `7d` \| `14d` \| `30d` \| `90d` \| `365d` | Default `7d`. `month` is the UTC calendar month to date, the Console's default. A window longer than the plan's history starts where the history does, and `history.limited` says so. |
+| `group_by` | `day` \| `model` \| `key` \| `agent` \| `provider` \| `mode` \| `client` \| `app` | Default `model`. `client` is the client tag; `mode` splits managed from your own provider key; `app` is the calling application. |
+| `client` | string | Only calls for this client tag. `__untagged__` selects calls with none. |
+
+Use it for budget monitoring (how much of the month is gone, which model or key
+drives it) and for cost attribution (spend per client tag or per agent).
 
 **The total is the Console's figure.** `/api/v1/usage` returns two totals from
 two tables: `spend.cost_usd`, from the billing ledger that the allowance and
@@ -189,9 +265,10 @@ callers. They are written separately and can disagree. This tool reports
 fall back to `summary.cost_usd`, set `cost_source: "trace"`, and say so in the
 output.
 
-It also sets `is_floor`. Unpriced rows sum as zero — the only arithmetic
-available — so a total that includes one is a lower bound, not a total, and
-this tool says how many there were, counted in the same table as the total.
+**`is_floor` means "at least".** Unpriced rows sum as zero, the only arithmetic
+available, so a total that includes one is a lower bound. So is a total whose
+read hit the row cap. When `is_floor` is true, report the figure as "at least
+$X", never as the bill.
 
 **Routing savings are two figures, never one.** When the API sends `savings`,
 the tool shows `named` (saved on models you asked for, measured) and
@@ -199,6 +276,44 @@ the tool shows `named` (saved on models you asked for, measured) and
 plan allows: a comparison, not a saving) on separate lines. It never adds them
 together, and it never computes a saving client-side from a copy of the rate
 card.
+
+`credit` is passed through from the API: on a spend-metered plan, the Free
+plan's weekly credit, any welcome credit and when it expires, included usage
+this period, and purchased credit left.
+
+### Client tags
+
+`lobstack_chat`, `lobstack_embeddings` and `lobstack_web_search` take an
+optional `client_tag`: who the call is for, sent as `x-lobstack-client-tag`.
+1 to 64 characters of lowercase `a-z`, `0-9`, `.`, `_` or `-`, starting with a
+letter or digit. Read it back with `lobstack_spend` `group_by: "client"`. A tag
+set on the API key itself wins over the argument. A client with a hard monthly
+budget that is spent refuses the call with 402 `CLIENT_BUDGET_EXHAUSTED`.
+
+## Errors
+
+A failed call returns `isError: true` with the API's message, then a line
+naming the error class, the HTTP status, the `error_code` when there is one,
+and whether a retry can help:
+
+```
+monthly allowance exhausted
+
+Error class: quota (HTTP 402, ALLOWANCE_EXHAUSTED). Do not retry: the allowance or a budget is spent until it is raised or resets.
+The plan's included usage and credit are used. Top up or upgrade in Console → Billing.
+Request id: 8f2b1e0c-...
+```
+
+| Class | Status | Retry? |
+| --- | --- | --- |
+| `auth` | 401, 403 | No. Fix the key or its scopes. |
+| `quota` | 402, 429 | 402 no. 429 yes, after `Retry-After`. |
+| `validation` | 400, 409, 422 | No. Fix the arguments. |
+| `provider` | 502, 503, other 5xx | Yes, with backoff, except `SEARCH_UNAVAILABLE`, `MANAGED_DISABLED` and `PROVIDER_ACCOUNT_UNAVAILABLE`: use a fallback. |
+| `timeout` | 408, 504 | Yes. The first attempt may have completed and been billed. |
+| `internal` | 500 | Once, then report the request id. |
+
+The full list is at <https://www.lobstack.ai/docs/gateway/errors>.
 
 ## Two rules about the numbers
 
