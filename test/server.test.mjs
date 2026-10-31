@@ -50,11 +50,18 @@ async function withGateway(opts, fn) {
 
 /* ── the surface ──────────────────────────────────────────────────────── */
 
-test('advertises four tools, with schemas and annotations', async () => {
+test('advertises six tools, with schemas and annotations', async () => {
   await withGateway({}, async (client) => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    assert.deepEqual(names, ['lobstack_chat', 'lobstack_models', 'lobstack_route_preview', 'lobstack_spend']);
+    assert.deepEqual(names, [
+      'lobstack_chat',
+      'lobstack_embeddings',
+      'lobstack_models',
+      'lobstack_route_preview',
+      'lobstack_spend',
+      'lobstack_web_search',
+    ]);
 
     for (const t of tools) {
       assert.ok(t.inputSchema, `${t.name} has an input schema`);
@@ -62,9 +69,11 @@ test('advertises four tools, with schemas and annotations', async () => {
       assert.ok(t.description.length > 40, `${t.name} says what it does`);
     }
 
-    // chat spends money; the other three do not.
+    // chat, embeddings and search spend money; the other three do not.
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     assert.equal(byName.lobstack_chat.annotations.readOnlyHint, false);
+    assert.equal(byName.lobstack_embeddings.annotations.readOnlyHint, false);
+    assert.equal(byName.lobstack_web_search.annotations.readOnlyHint, false);
     assert.equal(byName.lobstack_models.annotations.readOnlyHint, true);
     assert.equal(byName.lobstack_route_preview.annotations.readOnlyHint, true);
     assert.equal(byName.lobstack_spend.annotations.readOnlyHint, true);
@@ -307,8 +316,12 @@ test('fails loudly on a 3xx instead of losing the key to it', async () => {
 test('lists models with prices, and does not price the unpriced one at zero', async () => {
   await withGateway({}, async (client) => {
     const res = await client.callTool({ name: 'lobstack_models', arguments: {} });
-    assert.equal(res.structuredContent.count, 4);
+    assert.equal(res.structuredContent.count, 7);
+    // auto has no price by design and is not counted as a gap.
     assert.equal(res.structuredContent.unpriced_count, 1);
+    assert.equal(res.structuredContent.models[0].id, 'auto');
+    assert.equal(res.structuredContent.models[0].tier, 'router');
+    assert.equal(res.structuredContent.models[0].input_usd_per_mtok, null);
 
     const opus = res.structuredContent.models.find((m) => m.id === 'claude-opus-5');
     assert.equal(opus.input_usd_per_mtok, 5);
@@ -316,7 +329,7 @@ test('lists models with prices, and does not price the unpriced one at zero', as
     assert.equal(opus.tier, 'flagship');
     assert.equal(opus.provider, 'anthropic');
 
-    const unpriced = res.structuredContent.models.find((m) => m.id === 'llama-4-scout-local');
+    const unpriced = res.structuredContent.models.find((m) => m.id === 'gpt-6-luna-unpriced');
     assert.equal(unpriced.input_usd_per_mtok, null, 'no price means null, not zero');
     assert.equal(unpriced.output_usd_per_mtok, null);
 
@@ -324,7 +337,7 @@ test('lists models with prices, and does not price the unpriced one at zero', as
     assert.match(rendered, /claude-opus-5/);
     assert.match(rendered, /\$5/);
     assert.match(rendered, /—/, 'the unpriced model renders as a dash');
-    assert.doesNotMatch(rendered, /llama-4-scout-local.*\$0/);
+    assert.doesNotMatch(rendered, /gpt-6-luna-unpriced.*\$0/);
     assert.match(rendered, /are not free/);
   });
 });
@@ -334,10 +347,16 @@ test('filters the catalogue by tier and provider', async () => {
     const byTier = await client.callTool({ name: 'lobstack_models', arguments: { tier: 'flagship' } });
     assert.equal(byTier.structuredContent.count, 2);
 
-    const byProvider = await client.callTool({ name: 'lobstack_models', arguments: { provider: 'openai' } });
+    const byProvider = await client.callTool({ name: 'lobstack_models', arguments: { provider: 'openai', type: 'chat' } });
     assert.deepEqual(
       byProvider.structuredContent.models.map((m) => m.id),
-      ['gpt-5.6'],
+      ['gpt-5.6', 'gpt-6-luna-unpriced'],
+    );
+
+    const embeddings = await client.callTool({ name: 'lobstack_models', arguments: { type: 'embedding' } });
+    assert.deepEqual(
+      embeddings.structuredContent.models.map((m) => [m.id, m.dimensions, m.tier]),
+      [['text-embedding-3-small', 1536, null], ['text-embedding-3-large', 3072, null]],
     );
   });
 });

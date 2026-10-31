@@ -55,15 +55,35 @@ import { errorFrom, gwFetch } from "../gateway.js";
 import { money } from "../receipt.js";
 import { baseNote, fromThrown, ok, requireKey, type ToolResult } from "./shared.js";
 
-const RANGES = ["month", "7d", "14d", "30d", "90d"] as const;
-const GROUPS = ["day", "model", "key", "agent"] as const;
+/** The windows /api/v1/usage serves (src/app/api/v1/usage/window.ts). Anything else it answers as 7d. */
+export const RANGES = ["month", "1d", "7d", "14d", "30d", "90d", "365d"] as const;
+/** The groupings /api/v1/usage serves. */
+export const GROUPS = ["day", "model", "key", "agent", "provider", "mode", "client", "app"] as const;
 
 export const spendInput = {
   range: z
     .enum(RANGES)
     .optional()
-    .describe('How far back to look. "month" is the UTC calendar month to date, the Console\'s default window. Defaults to 7d.'),
-  group_by: z.enum(GROUPS).optional().describe("How to break the total down. Defaults to model."),
+    .describe(
+      'Time window. "month" = the current UTC calendar month to date (the Console\'s default and the allowance period); ' +
+        '"1d", "7d", "14d", "30d", "90d", "365d" = rolling days back from now. Default "7d". A window longer than the ' +
+        "plan's history starts where the history does; `history.limited` says so.",
+    ),
+  group_by: z
+    .enum(GROUPS)
+    .optional()
+    .describe(
+      'How to break the total down into `groups`. "model" (default) = served model; "day" = UTC date; "key" = API key id; ' +
+        '"agent" = agent id; "provider" = anthropic/openai/google/xai/brave; "mode" = managed (Lobstack\'s keys) vs byok ' +
+        '(your own provider key); "client" = client tag (cost attribution per customer); "app" = the calling application.',
+    ),
+  client: z
+    .string()
+    .regex(/^(__untagged__|[a-z0-9][a-z0-9._-]{0,63})$/, "a client tag, or __untagged__")
+    .optional()
+    .describe(
+      'Only count calls made for this client tag, e.g. "acme". "__untagged__" selects calls with no tag. Default: all calls.',
+    ),
 };
 
 const savingsBlock = z.object({
@@ -76,8 +96,8 @@ const savingsBlock = z.object({
 
 export const spendOutput = {
   enabled: z.boolean().describe("False when request tracing is not enabled on this deployment."),
-  range: z.string(),
-  group_by: z.string(),
+  range: z.string().describe("The window the API actually summed (it answers an unknown window as 7d)."),
+  group_by: z.string().describe("The grouping used for `groups`."),
   cost_usd: z
     .number()
     .nullable()
@@ -101,7 +121,12 @@ export const spendOutput = {
     .record(z.unknown())
     .nullable()
     .describe("Requests, errors, tokens and latency from the request trace. Its cost_usd is the legacy figure."),
-  groups: z.array(z.record(z.unknown())),
+  groups: z
+    .array(z.record(z.unknown()))
+    .describe(
+      "One row per group: key, requests, errors, total_tokens, ledger_cost_usd (billed spend — use this) and cost_usd " +
+        "(the trace's legacy copy), plus unpriced counts.",
+    ),
   savings: z
     .object({
       named: savingsBlock.describe("Measured: requests that named a model and were routed to a cheaper one."),
@@ -114,7 +139,21 @@ export const spendOutput = {
     .describe("Routing savings from the ledger, as two separate figures. Never add them together. Null when not reported."),
   is_floor: z
     .boolean()
-    .describe("True when some rows were unpriced or the row cap bound, so the totals are a lower bound, not a total."),
+    .describe(
+      "True when the real total is at least cost_usd, not exactly it: some rows could not be priced (they sum as 0) " +
+        "or the row cap cut off older rows. Say \"at least $X\" when it is true; never report it as an exact bill.",
+    ),
+  history: z
+    .record(z.unknown())
+    .nullable()
+    .describe("The plan's history window: days, plan, and limited (true when the range was clipped to it)."),
+  credit: z
+    .record(z.unknown())
+    .nullable()
+    .describe(
+      "Credit left on a spend-metered plan: weekly (Free plan weekly credit), welcome (given credit and its expiry), " +
+        "included (provider usage included this period), purchased (top-ups left). Null on other meters.",
+    ),
   message: z.string().nullable(),
 };
 
@@ -166,6 +205,8 @@ interface UsageBody {
     ledger_unpriced_rows?: number;
   }>;
   truncated?: boolean;
+  history?: Record<string, unknown> | null;
+  credit?: Record<string, unknown> | null;
 }
 
 const pad = (s: string, n: number) => (s.length >= n ? s : s + " ".repeat(n - s.length));
@@ -213,7 +254,10 @@ function savingsLines(named: Required<SavingsBlock>, ceiling: Required<SavingsBl
   return lines.length ? ["Routing savings (two separate figures, never added together):", ...lines.map((l) => `  ${l}`)] : [];
 }
 
-export async function runSpend(cfg: Config, args: { range?: string; group_by?: string }): Promise<ToolResult> {
+export async function runSpend(
+  cfg: Config,
+  args: { range?: string; group_by?: string; client?: string },
+): Promise<ToolResult> {
   const missing = requireKey(cfg);
   if (missing) return missing;
 
@@ -223,7 +267,11 @@ export async function runSpend(cfg: Config, args: { range?: string; group_by?: s
   try {
     const res = await gwFetch(
       cfg,
-      `${apiUrl(cfg.base.origin, "/v1/usage")}?range=${encodeURIComponent(range)}&group_by=${encodeURIComponent(groupBy)}`,
+      `${apiUrl(cfg.base.origin, "/v1/usage")}?${new URLSearchParams({
+        range,
+        group_by: groupBy,
+        ...(args.client ? { client: args.client } : {}),
+      })}`,
     );
     if (!res.ok) {
       throw await errorFrom(
@@ -251,6 +299,8 @@ export async function runSpend(cfg: Config, args: { range?: string; group_by?: s
         groups: [],
         savings: null,
         is_floor: false,
+        history: null,
+        credit: null,
         message: b.message ?? null,
       });
     }
@@ -332,6 +382,9 @@ export async function runSpend(cfg: Config, args: { range?: string; group_by?: s
         ? `${plural(unpriced, fromLedger ? "row" : "request")} could not be priced. Those sum as zero, so the total above is a floor, not a total.`
         : null,
       truncated ? "The row cap bound on this range, so older requests are not counted here." : null,
+      b.history && b.history.limited === true
+        ? `This plan keeps ${String(b.history.days)} days of history, so the window starts there.`
+        : null,
       fromLedger && unmetered > 0
         ? `${plural(unmetered, "served request")} ${unmetered === 1 ? "has" : "have"} no billing ledger row, so ${unmetered === 1 ? "it is" : "they are"} not in this total.`
         : null,
@@ -352,6 +405,8 @@ export async function runSpend(cfg: Config, args: { range?: string; group_by?: s
       groups: groups as Array<Record<string, unknown>>,
       savings,
       is_floor: isFloor,
+      history: b.history ?? null,
+      credit: b.credit ?? null,
       message: null,
     });
   } catch (e) {

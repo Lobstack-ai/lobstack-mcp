@@ -2,20 +2,20 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Lobstack-ai/lobstack-mcp",
   "title": "Lobstack API",
-  "description": "The Lobstack API as an MCP server: one key across many model providers, and what each call cost.",
+  "description": "The Lobstack API over MCP: chat, embeddings and web search on one key, and what each call cost.",
   "websiteUrl": "https://www.lobstack.ai/docs/mcp",
   "repository": {
     "url": "https://github.com/Lobstack-ai/lobstack-mcp",
     "source": "github",
     "id": "1365220361"
   },
-  "version": "0.1.4",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@lobstack-ai/mcp",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "runtimeHint": "npx",
       "runtimeArguments": [
         {
@@ -30,7 +30,7 @@
       "environmentVariables": [
         {
           "name": "LOBSTACK_API_KEY",
-          "description": "Lobstack API key from Console → API keys. Optional: lobstack_route_preview works with no key. The other tools need it. Read once at startup, never logged, never a tool argument.",
+          "description": "Lobstack API key from Console → API keys. Optional: lobstack_route_preview and lobstack_models work with no key; chat, embeddings, web search and spend need it. Read once at startup, never logged, never a tool argument.",
           "isRequired": false,
           "isSecret": true,
           "format": "string"
