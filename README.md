@@ -1,12 +1,24 @@
-# @lobstack-ai/mcp
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.lobstack.ai/brand/lobstack-mark-light-128.png">
+    <img src="https://www.lobstack.ai/brand/lobstack-mark-128.png" alt="Lobstack" width="44">
+  </picture>
+</p>
 
-An MCP server for the [Lobstack API](https://www.lobstack.ai/api-platform). One
-API key reaches [chat models from Anthropic, OpenAI, Google and xAI](https://www.lobstack.ai/models),
+# lobstack-mcp
+
+An MCP server for the Lobstack API, published on npm as `@lobstack-ai/mcp`.
+
+One API key reaches [chat models from Anthropic, OpenAI, Google and xAI](https://www.lobstack.ai/models),
 plus embeddings and web search, and every call comes back with a receipt: which
 model served it, how many tokens, what it cost.
 
-Works in Claude Desktop, Claude Code, Cursor, Zed, or anything else that speaks
-the Model Context Protocol over stdio.
+It works with any MCP client that speaks the Model Context Protocol over stdio.
+The blocks under [Install](#install) are examples for a few common clients; any
+other client takes the same command and the same environment variable.
+
+> npm has `@lobstack-ai/mcp` 0.1.3 today. This repository is at 0.2.0, which is
+> not published yet.
 
 ## Try it without a key
 
@@ -277,9 +289,9 @@ plan allows: a comparison, not a saving) on separate lines. It never adds them
 together, and it never computes a saving client-side from a copy of the rate
 card.
 
-`credit` is passed through from the API: on a spend-metered plan, the Free
-plan's weekly credit, any welcome credit and when it expires, included usage
-this period, and purchased credit left.
+`credit` is passed through from the API as it comes: on a spend-metered plan,
+any welcome credit and when it expires, included usage this period, purchased
+credit left, and the older weekly field where the API still sends one.
 
 ### Client tags
 
@@ -418,6 +430,13 @@ accept a second upload of that version, so the first publish that succeeds is
 the next one: bump `package.json` and `server.json` together, push the `v*` tag,
 then publish the GitHub Release.
 
-## Licence
+## License
 
 MIT
+
+## Links
+
+- [lobstack.ai](https://www.lobstack.ai)
+- [MCP docs](https://www.lobstack.ai/docs/mcp) · [API docs](https://www.lobstack.ai/docs/gateway) · [Docs](https://www.lobstack.ai/docs)
+- [Get a key](https://www.lobstack.ai/start): $5 of credit to start, no card and no monthly plan needed
+- [Download the Lobstack app](https://www.lobstack.ai/download)
